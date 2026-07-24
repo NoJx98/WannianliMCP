@@ -1141,6 +1141,169 @@ def calculate_liuri_jixiong(bazi, today_date=None):
         "建议": tips.get(gan_shishen, "保持平常心"),
     }
 
+def generate_personal_scenario(bazi, liuri, fortune_data):
+    """根据八字+流日+今日天象，生成一个详细的个人场景建议
+    综合静态分析（八字/大运/用神）和动态数据（流日/建星/月相/二十八宿）
+    """
+    dm = bazi.get("日主", {})
+    dm_wx = dm.get("五行", "土")
+    dm_yy = dm.get("阴阳", "阴")
+    dayun_current = [d for d in (bazi.get("_dayun_list") or []) if d.get("当前")]
+    
+    # 今日数据
+    liuri_ss = liuri.get("十神关系", "")
+    liuri_level = liuri.get("吉凶", "平")
+    liuri_score = liuri.get("评分", 3)
+    liuri_tip = liuri.get("建议", "")
+    liuri_wx = liuri.get("五行关系", "")
+    liuri_chonghe = liuri.get("地支冲合", "")
+    
+    jianchu = fortune_data.get("jianchu", "")
+    jianchu_jx = fortune_data.get("jianchu_jixiong", "")
+    xiu_name = fortune_data.get("xiu", {}).get("宿名", "")
+    xiu_jx = fortune_data.get("xiu", {}).get("吉凶", "")
+    moon_phase = fortune_data.get("moon_phase", {}).get("月相", "")
+    moon_energy = fortune_data.get("moon_phase", {}).get("能量", "")
+    jishi = fortune_data.get("jishi", [])
+    chongsha = fortune_data.get("chongsha", {})
+    
+    # 用神分析
+    yongshen = bazi.get("_yongshen") or {}
+    ys_wx = yongshen.get("用神", "金")
+    ys_shen = yongshen.get("身强身弱", "中和")
+    
+    # 神煞
+    shensha = bazi.get("_shensha_list") or []
+    tianyi_zhi = [s["对应"] for s in shensha if s["神煞"] == "天乙贵人"]
+    taohua_zhi = [s["对应"] for s in shensha if "桃花" in s["神煞"]]
+    wenchang_zhi = [s["对应"] for s in shensha if s["神煞"] == "文昌"]
+    
+    # ---- 构建场景 ----
+    scenarios = []
+    
+    # 1. 流日解读
+    if liuri_level in ("大吉", "上上"):
+        today_mood = "顺遂"
+    elif liuri_level == "吉":
+        today_mood = "平稳向好"
+    elif liuri_level == "凶":
+        today_mood = "有挑战"
+    else:
+        today_mood = "需谨慎"
+    
+    # 2. 大运 + 流日合力
+    if dayun_current:
+        dy_ganzhi = dayun_current[0]["干支"]
+        dy_wx = dayun_current[0]["五行"]
+        dy_impact = dayun_current[0]["影响"]
+    
+    # 七杀日特别提醒
+    if liuri_ss == "七杀":
+        seven_kill = True
+    else:
+        seven_kill = False
+    
+    # 正官日
+    if liuri_ss == "正官":
+        zhengguan = True
+    else:
+        zhengguan = False
+    
+    # 正印日
+    if liuri_ss == "正印":
+        zhengyin = True
+    else:
+        zhengyin = False
+    
+    # 3. 今日场景构建
+    date_str = fortune_data.get("date", "")
+    
+    # 主体场景
+    if seven_kill:
+        main_scene = (
+            f"今日{liuri_ss}日，七杀代表压力、挑战与权威。"
+            f"对你而言，今日可能遇到需要快速决策的局面，或面临来自上级/客户的严格要求。"
+        )
+        if liuri_chonghe and "六冲" in liuri_chonghe:
+            main_scene += "加上地支六冲，变动感强烈，不宜做重大决策。"
+        elif liuri_chonghe and "六合" in liuri_chonghe:
+            main_scene += "好在有六合星照临，人际关系能帮你化解部分压力。"
+        
+        if "癸酉" in (dayun_current[0]["干支"] if dayun_current else ""):
+            main_scene += (
+                f"\n\n不过你正走癸酉水运——水是你的喜神，酉金是你的用神。"
+                f"大运给你灌水补身，让你在面对七杀压力时有足够底气。"
+                f"这就像你已经练好了内功，今日的挑战正是检验修行成果的时候。"
+            )
+        
+        advice = (
+            f"**应对策略：** 避开{chongsha.get('冲','')}相的同事/朋友直接冲突，"
+            f"将压力转化为执行力。七杀日的优势在于行动力爆发，"
+            f"适合集中处理积压的工作。吉时{jishi[0].split('·')[0] if jishi else '上午'}开始最有效。"
+        )
+    
+    elif zhengguan:
+        main_scene = (
+            f"今日正官日，正官代表规矩、事业、责任感。"
+            f"对身弱的你来说，正官是克身但有情——就像一位严格的老师，"
+            f"虽然让你有压力，但目的是让你成长。"
+        )
+        advice = "宜展现专业能力，守规矩办事，上级会看在眼里。"
+    
+    elif zhengyin:
+        main_scene = (
+            f"今日正印日，正印生身，是你的贵人星。"
+            f"正印如母亲般温柔滋养，特别适合学习、求教、整理思绪。"
+        )
+        advice = "宜读书充电、向长辈请教、处理文书工作。"
+    
+    else:
+        main_scene = (
+            f"今日{liuri_ss}日，整体运势{liuri_level}。"
+        )
+        advice = liuri_tip
+    
+    # 4. 天象加持
+    celestial = (
+        f"\n\n**天象加持：** 今日建星「{jianchu}」为{jianchu_jx}，"
+        f"值宿「{xiu_name}」属{xiu_jx}，月相「{moon_phase}」能量为{moon_energy}。"
+    )
+    
+    if jianchu in ("定","成","开","除","执"):
+        celestial += f"建星为吉，适合{','.join(fortune_data.get('jianchu_yi',[])[:3])}。"
+    
+    if xiu_jx == "吉":
+        celestial += f"{xiu_name}宿宜{','.join([x for x in fortune_data.get('xiu',{}).get('宜',[]) if x][:2])}。"
+    
+    # 5. 吉时窗口
+    if jishi:
+        top_jishi = jishi[:3]
+        time_window = f"\n\n**黄金时段：** " + "、".join(j.split("·")[0] for j in top_jishi) + "，适合重要活动。"
+    else:
+        time_window = ""
+    
+    # 6. 今日关键词
+    keywords_map = {
+        "七杀":"突破·抗压·行动力","正官":"规矩·专业·上级","正印":"学习·贵人·静养",
+        "偏印":"独处·研究·灵感","比肩":"合作·社交·分享","劫财":"谨慎·防破财·低调",
+        "食神":"享受·创造·美食","伤官":"表达·创新·谨慎","正财":"稳健·理财·守成","偏财":"机遇·投资·灵活"
+    }
+    keywords = keywords_map.get(liuri_ss, "平常心·稳扎稳打")
+    
+    return {
+        "场景": main_scene.strip(),
+        "建议": advice.strip(),
+        "天象": celestial.strip(),
+        "时机": time_window.strip(),
+        "今日关键词": keywords,
+        "整体基调": today_mood,
+        "隐藏机遇": (
+            f"七杀之下藏偏印——今日地支亥中藏壬甲，壬水是你的劫财帮身，"
+            f"甲木是你的伤官泄秀。压力之中有朋友暗中相助，"
+            f"不妨主动联系属{','.join(fortune_data.get('zodiac_compat',{}).get('最佳配对',[])[:2])}的朋友聊聊。"
+        ) if seven_kill and liuri_chonghe == "六冲！" else "",
+    }
+
 # ============================================================
 # 二十、综合运势计算（整合版 v2.1）
 # ============================================================
@@ -1319,6 +1482,7 @@ def calculate_fortune(date=None, birth_date=None):
         "shensha": None,
         "dayun": None,
         "liuri": None,
+        "personal_scenario": None,
     }
 
     # 如果有个人八字，计算所有新增模块
@@ -1331,6 +1495,12 @@ def calculate_fortune(date=None, birth_date=None):
         result["shensha"] = calculate_shensha(pillars)
         result["dayun"] = calculate_dayun(birth_date, bz)
         result["liuri"] = calculate_liuri_jixiong(bz)
+
+        # 🆕 v2.2 个人场景建议
+        bz["_dayun_list"] = result["dayun"]["大运列表"]
+        bz["_yongshen"] = result["yongshen"]
+        bz["_shensha_list"] = result["shensha"]["所有神煞"]
+        result["personal_scenario"] = generate_personal_scenario(bz, result["liuri"], result)
 
     return result
 
@@ -1460,9 +1630,9 @@ if __name__ == "__main__":
     for tag in generate_tags(result):
         print(f"  {tag['icon']} {tag['label']}: {tag['value']}")
 
-    # 测一个生日八字
+    # 测试八字（用示例日期，不代表任何人）
     print("\n=== 测试八字 ===")
-    bazi = calculate_bazi(datetime(1998, 6, 15, 12, 0))
+    bazi = calculate_bazi(datetime(2000, 1, 1, 12, 0))
     print(f"  四柱: {bazi['年柱']} {bazi['月柱']} {bazi['日柱']} {bazi['时柱']}")
     print(f"  日主: {bazi['日主说明']}")
     print(f"  五行分布: {bazi['五行分布']}")
