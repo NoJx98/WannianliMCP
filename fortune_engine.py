@@ -669,7 +669,480 @@ def calculate_day_master(date=None):
     }
 
 # ============================================================
-# 十四、综合运势计算（整合版）
+# 十四、十神（Ten Gods）
+# 【出处】《渊海子平·论十神》
+# 以日主天干为"我"，判断其他天干与我的关系
+# ============================================================
+
+def get_shishen(day_master_gan, other_gan):
+    """计算十神关系：其他天干 → 日主的关系
+    【规则】
+    - 同我：比肩（同阴阳）/劫财（异阴阳）
+    - 生我：正印（异阴阳）/偏印（同阴阳）
+    - 我生：伤官（异阴阳）/食神（同阴阳）
+    - 克我：正官（异阴阳）/七杀（同阴阳）
+    - 我克：正财（异阴阳）/偏财（同阴阳）
+    """
+    dm_wx = GAN_WUXING[day_master_gan]
+    other_wx = GAN_WUXING[other_gan]
+    dm_yy = GAN_YINYANG[day_master_gan]
+    other_yy = GAN_YINYANG[other_gan]
+    same_yy = (dm_yy == other_yy)
+
+    # 五行生克关系
+    SHENG = {"木":"火","火":"土","土":"金","金":"水","水":"木"}  # A生B
+    KE = {"木":"土","土":"水","水":"火","火":"金","金":"木"}      # A克B
+
+    if dm_wx == other_wx:
+        return "比肩" if same_yy else "劫财"
+    elif SHENG.get(other_wx) == dm_wx:
+        return "偏印" if same_yy else "正印"
+    elif SHENG.get(dm_wx) == other_wx:
+        return "食神" if same_yy else "伤官"
+    elif KE.get(other_wx) == dm_wx:
+        return "七杀" if same_yy else "正官"
+    elif KE.get(dm_wx) == other_wx:
+        return "偏财" if same_yy else "正财"
+    return "未知"
+
+SHISHEN_MEANING = {
+    "比肩": "同辈、朋友、竞争、自我",
+    "劫财": "兄弟姐妹、合作、争夺",
+    "正印": "母亲、学业、贵人、庇护",
+    "偏印": "继母、偏门学问、灵感、孤僻",
+    "食神": "子女、才华、口福、乐观",
+    "伤官": "才华外露、叛逆、创造力",
+    "正官": "上司、纪律、丈夫（女）、事业",
+    "七杀": "权威、挑战、小人、魄力",
+    "正财": "妻子（男）、稳定收入、节俭",
+    "偏财": "父亲、意外之财、慷慨、投资",
+}
+
+SHISHEN_RANK = {
+    "正印": 5, "偏印": 4, "比肩": 3, "劫财": 2,
+    "食神": 2, "伤官": 1, "正财": 3, "偏财": 4,
+    "正官": 4, "七杀": 1
+}
+
+def calculate_shishen_all(pillars):
+    """计算八字中所有十神关系，返回每个天干的十神"""
+    day_gan = None
+    for p in pillars:
+        if p["柱"] == "日柱":
+            day_gan = p["天干"]
+    if not day_gan:
+        return {}
+
+    result = {}
+    for p in pillars:
+        gan = p["天干"]
+        zhi = p["地支"]
+        zhi_hidden = ZHI_CANGGAN.get(zhi, [])
+        # 天干十神
+        result[f"{p['柱']}天干{gan}"] = {
+            "干支": gan, "十神": get_shishen(day_gan, gan),
+            "含义": SHISHEN_MEANING.get(get_shishen(day_gan, gan), ""),
+            "位置": p["柱"]
+        }
+        # 地支藏干十神
+        for hg in zhi_hidden:
+            result[f"{p['柱']}地支藏{gan}{hg}"] = {
+                "干支": hg, "十神": get_shishen(day_gan, hg),
+                "含义": SHISHEN_MEANING.get(get_shishen(day_gan, hg), ""),
+                "位置": p["柱"]
+            }
+    return result
+
+# ============================================================
+# 十五、地支藏干
+# 【出处】《三命通会》《渊海子平》
+# ============================================================
+
+ZHI_CANGGAN = {
+    "子": ["癸"],
+    "丑": ["己","癸","辛"],
+    "寅": ["甲","丙","戊"],
+    "卯": ["乙"],
+    "辰": ["戊","乙","癸"],
+    "巳": ["丙","戊","庚"],
+    "午": ["丁","己"],
+    "未": ["己","丁","乙"],
+    "申": ["庚","壬","戊"],
+    "酉": ["辛"],
+    "戌": ["戊","辛","丁"],
+    "亥": ["壬","甲"],
+}
+
+ZHI_CANGGAN_LABEL = {
+    "寅": {"甲":"本气","丙":"中气","戊":"余气"},
+    "午": {"丁":"本气","己":"中气"},
+    "巳": {"丙":"本气","戊":"中气","庚":"余气"},
+}
+
+def get_canggan_detail(pillars):
+    """获取四柱地支藏干详情"""
+    result = []
+    for p in pillars:
+        zhi = p["地支"]
+        hidden = ZHI_CANGGAN.get(zhi, [])
+        labels = ZHI_CANGGAN_LABEL.get(zhi, {})
+        cg_list = []
+        for hg in hidden:
+            label = labels.get(hg, "")
+            wx = GAN_WUXING.get(hg, "")
+            cg_list.append({"藏干": hg, "五行": wx, "气": label, "十神": get_shishen(
+                [pp["天干"] for pp in pillars if pp["柱"]=="日柱"][0] if any(pp["柱"]=="日柱" for pp in pillars) else "甲", hg
+            )})
+        result.append({"柱": p["柱"], "地支": zhi, "藏干详情": cg_list})
+    return result
+
+# ============================================================
+# 十六、用神分析
+# 【出处】《子平真诠》《滴天髓》
+# ============================================================
+
+def analyze_yongshen(bazi):
+    """分析八字用神
+    规则：扶抑法——身弱补印比，身强补财官食
+    """
+    wx_count = bazi.get("五行分布", {})
+    day_wx = bazi.get("日主", {}).get("五行", "土")
+    day_rank = sum(1 for p in bazi.get("四柱详情", []) if p.get("天干五行") == day_wx or p.get("地支五行") == day_wx)
+
+    # 判断身强身弱：日主五行出现>=4次为强，<=2次为弱
+    if day_rank <= 2:
+        shen = "身弱"
+    elif day_rank >= 4:
+        shen = "身强"
+    else:
+        shen = "中和"
+
+    # 五行生克链
+    SHENG = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+    KE = {"木":"土","土":"水","水":"火","火":"金","金":"木"}
+    BEI_SHENG = {v:k for k,v in SHENG.items()}  # 谁生我
+    BEI_KE = {v:k for k,v in KE.items()}         # 谁克我
+
+    if shen == "身弱":
+        yong = BEI_SHENG.get(day_wx, "金")  # 印星（生我）
+        xi = day_wx  # 比劫（同我）
+        ji = KE.get(day_wx, "火")  # 官杀（克我）
+        chou = SHENG.get(day_wx, "土")  # 食伤（我生）
+    elif shen == "身强":
+        yong = KE.get(day_wx, "火")  # 官杀
+        xi = SHENG.get(day_wx, "土")  # 食伤
+        ji = BEI_SHENG.get(day_wx, "金")  # 印星
+        chou = day_wx  # 比劫
+    else:
+        yong = "调和"
+        xi = "均衡"
+        ji = "极端"
+        chou = "偏颇"
+
+    WUXING_MEANING = {
+        "金": "加强执行力、决断力，宜从事金融/法律/管理","木": "培养仁德、拓展人脉，宜从事教育/文化/医疗",
+        "水": "增强智慧、灵活应变，宜从事交通/通讯/贸易","火": "提升热情、展现魅力，宜从事传媒/餐饮/公益",
+        "土": "培养诚信、稳扎稳打，宜从事地产/农业/咨询"
+    }
+
+    return {
+        "日主": day_wx,
+        "日主出现次数": day_rank,
+        "身强身弱": shen,
+        "用神": yong,
+        "用神说明": WUXING_MEANING.get(yong, "平衡为宜"),
+        "喜神": xi,
+        "忌神": ji,
+        "仇神": chou,
+        "喜用神": [yong, xi] if yong != xi else [yong],
+        "建议": f"日主{day_wx}{shen}，用神取{yong}，喜{xi}，忌{ji}。{WUXING_MEANING.get(yong,'')}",
+    }
+
+# ============================================================
+# 十七、神煞
+# 【出处】《渊海子平》《星平会海》
+# ============================================================
+
+def calculate_shensha(pillars, day_zhi=None, year_zhi=None):
+    """计算常见神煞
+    - 天乙贵人：日干+年干为主
+    - 文昌：日干查
+    - 桃花（咸池）：日支查
+    - 驿马：日支查
+    - 华盖：日支查
+    - 羊刃：日干查
+    - 禄神：日干查
+    """
+    if not pillars:
+        return {}
+
+    day_gan = None
+    for p in pillars:
+        if p["柱"] == "日柱":
+            day_gan = p["天干"]
+            day_zhi_val = p["地支"]
+            break
+    if not day_gan:
+        day_gan = pillars[2]["天干"] if len(pillars) > 2 else "甲"
+        day_zhi_val = ""
+    if not day_zhi:
+        day_zhi = day_zhi_val
+
+    year_gan = pillars[0]["天干"] if pillars else "甲"
+    year_zhi_val = pillars[0]["地支"] if pillars else "子"
+    if not year_zhi:
+        year_zhi = year_zhi_val
+
+    # 天乙贵人（日干+年干）
+    TIANYI = {
+        "甲":"丑未","戊":"丑未","庚":"丑未",
+        "乙":"子申","己":"子申",
+        "丙":"亥酉","丁":"亥酉",
+        "辛":"午寅","壬":"卯巳","癸":"卯巳"
+    }
+
+    # 文昌（日干）
+    WENCHANG = {
+        "甲":"巳","乙":"午","丙":"申","丁":"酉","戊":"申",
+        "己":"酉","庚":"亥","辛":"子","壬":"寅","癸":"卯"
+    }
+
+    # 桃花/咸池（日支三合局首位）
+    TAOHUA = {"亥卯未":"子","寅午戌":"卯","巳酉丑":"午","申子辰":"酉"}
+    YIMA = {"亥卯未":"巳","寅午戌":"申","巳酉丑":"亥","申子辰":"寅"}
+    HUAGAI = {"亥卯未":"未","寅午戌":"戌","巳酉丑":"丑","申子辰":"辰"}
+    YANGREN = {"甲":"卯","乙":"寅","丙":"午","丁":"巳","戊":"午","己":"巳","庚":"酉","辛":"申","壬":"子","癸":"亥"}
+    LUSHEN = {"甲":"寅","乙":"卯","丙":"巳","丁":"午","戊":"巳","己":"午","庚":"申","辛":"酉","壬":"亥","癸":"子"}
+
+    sanhe_group = None
+    for group, zhi in {"亥卯未":"子","寅午戌":"卯","巳酉丑":"午","申子辰":"酉"}.items():
+        if day_zhi in group:
+            sanhe_group = group
+            break
+
+    results = []
+    # 天乙贵人
+    ty = TIANYI.get(day_gan, "")
+    for z in DI_ZHI:
+        if z in ty:
+            results.append({"神煞": "天乙贵人", "对应": z, "含义": "逢凶化吉，贵人相助", "级别": "大吉"})
+
+    # 文昌
+    wc = WENCHANG.get(day_gan, "")
+    results.append({"神煞": "文昌", "对应": wc, "含义": "学业有成，文采出众", "级别": "吉"})
+
+    # 禄神
+    ls = LUSHEN.get(day_gan, "")
+    results.append({"神煞": "禄神", "对应": ls, "含义": "福禄寿喜，衣食无忧", "级别": "吉"})
+
+    # 桃花
+    if sanhe_group:
+        th = TAOHUA.get(sanhe_group, "")
+        results.append({"神煞": "桃花(咸池)", "对应": th, "含义": "异性缘佳，人缘好", "级别": "中"})
+
+    # 驿马
+    if sanhe_group:
+        ym = YIMA.get(sanhe_group, "")
+        results.append({"神煞": "驿马", "对应": ym, "含义": "奔波劳碌，变动频繁", "级别": "中"})
+
+    # 华盖
+    if sanhe_group:
+        hg = HUAGAI.get(sanhe_group, "")
+        results.append({"神煞": "华盖", "对应": hg, "含义": "孤芳自赏，艺术天赋", "级别": "中"})
+
+    # 羊刃
+    yr = YANGREN.get(day_gan, "")
+    results.append({"神煞": "羊刃", "对应": yr, "含义": "刚强果断，易冲动", "级别": "凶"})
+
+    # 检查日支是否有神煞
+    ri_zhi_shensha = []
+    for s in results:
+        if s.get("对应") == day_zhi:
+            ri_zhi_shensha.append(s)
+
+    return {
+        "所有神煞": results,
+        "日支神煞": ri_zhi_shensha,
+        "日支": day_zhi,
+    }
+
+# ============================================================
+# 十八、大运计算
+# 【出处】《三命通会》《渊海子平》
+# ============================================================
+
+def calculate_dayun(birth_date, bazi):
+    """计算大运
+    规则：
+    - 阳年男/阴年女 → 顺排（从月柱往下顺数）
+    - 阴年男/阳年女 → 逆排
+    - 起运年龄 = 出生日到下一个/上一个节气天数 ÷ 3
+    """
+    year_gan = bazi["年柱"][0]
+    year_yy = GAN_YINYANG.get(year_gan, "阳")
+    is_yang = (year_yy == "阳")
+    is_male = True  # 默认男性
+    forward = (is_yang == is_male)
+
+    month_gan = bazi["月柱"][0]
+    month_zhi = bazi["月柱"][1]
+    month_gan_idx = TIAN_GAN.index(month_gan)
+    month_zhi_idx = DI_ZHI.index(month_zhi)
+
+    # 节气列表（日期为当月大约日期）
+    jieqi_dates = [
+        (1,6,"小寒"), (2,4,"立春"), (3,6,"惊蛰"), (4,5,"清明"),
+        (5,6,"立夏"), (6,6,"芒种"), (7,7,"小暑"), (8,8,"立秋"),
+        (9,8,"白露"), (10,8,"寒露"), (11,7,"立冬"), (12,7,"大雪"),
+    ]
+
+    # 找到出生日之后的第一个节气（顺排）/ 出生日之前的最后一个节气（逆排）
+    if forward:
+        # 找下一个节气
+        target_jq = None
+        for m, d, name in jieqi_dates:
+            jq_date = datetime(birth_date.year, m, d)
+            if jq_date > birth_date:
+                target_jq = jq_date
+                break
+        if not target_jq:
+            target_jq = datetime(birth_date.year + 1, 1, 6)
+    else:
+        # 找上一个节气
+        target_jq = None
+        for m, d, name in reversed(jieqi_dates):
+            jq_date = datetime(birth_date.year, m, d)
+            if jq_date < birth_date:
+                target_jq = jq_date
+                break
+        if not target_jq:
+            target_jq = datetime(birth_date.year - 1, 12, 7)
+
+    days_diff = abs((target_jq - birth_date).days)
+    qiyun_age = max(1, round(days_diff / 3))
+
+    # 生成大运（10年一步，共8步）
+    dayun_list = []
+    for i in range(8):
+        age = qiyun_age + i * 10
+        if forward:
+            g_idx = (month_gan_idx + i + 1) % 10
+            z_idx = (month_zhi_idx + i + 1) % 12
+        else:
+            g_idx = (month_gan_idx - i - 1) % 10
+            z_idx = (month_zhi_idx - i - 1) % 12
+        gz = f"{TIAN_GAN[g_idx]}{DI_ZHI[z_idx]}"
+        wx = GAN_WUXING[TIAN_GAN[g_idx]]
+        yy = GAN_YINYANG[TIAN_GAN[g_idx]]
+
+        # 判断当前是否在此大运中
+        current_age = (datetime.now() - birth_date).days / 365.25
+        is_current = age <= current_age < age + 10
+
+        yy_str = "正运" if yy == bazi.get("日主",{}).get("阴阳","阴") else "偏运"
+        impact = "好" if (wx in [bazi.get("日主",{}).get("五行","土"), "金"]) else "挑战"
+
+        dayun_list.append({
+            "步数": i+1, "年龄": f"{age}-{age+9}岁",
+            "干支": gz, "天干": TIAN_GAN[g_idx],
+            "五行": wx, "阴阳": yy, "运性": yy_str,
+            "影响": impact,
+            "当前": is_current,
+            "年份": f"{birth_date.year+age}-{birth_date.year+age+9}"
+        })
+
+    return {
+        "起运年龄": qiyun_age,
+        "起运年份": birth_date.year + qiyun_age,
+        "大运列表": dayun_list,
+        "当前大运": [d for d in dayun_list if d.get("当前")],
+    }
+
+# ============================================================
+# 十九、流日吉凶
+# 【出处】《三命通会》《渊海子平》
+# ============================================================
+
+def calculate_liuri_jixiong(bazi, today_date=None):
+    """计算今日流日对命主的吉凶影响"""
+    if today_date is None:
+        today_date = datetime.now()
+
+    # 今日日柱
+    base = datetime(2000, 1, 7)
+    days = (today_date - base).days
+    today_gan = TIAN_GAN[days % 10]
+    today_zhi = DI_ZHI[days % 12]
+
+    day_master_gan = bazi.get("日柱","")[0] if bazi.get("日柱") else "甲"
+    day_master_zhi = bazi.get("日柱","")[1] if bazi.get("日柱") else "子"
+    dm_wx = GAN_WUXING.get(day_master_gan, "土")
+
+    # 天干关系
+    gan_shishen = get_shishen(day_master_gan, today_gan)
+
+    # 地支关系
+    zhi_clash = ZHI_CHONG.get(day_master_zhi) == today_zhi
+    zhi_liuhe = any(today_zhi in pair and day_master_zhi in pair
+                    for pair in ["子丑","寅亥","卯戌","辰酉","巳申","午未"])
+
+    # 五行生克
+    today_wx = GAN_WUXING.get(today_gan, "土")
+    SHENG = {"木":"火","火":"土","土":"金","金":"水","水":"木"}
+    KE = {"木":"土","土":"水","水":"火","火":"金","金":"木"}
+
+    if SHENG.get(today_wx) == dm_wx:
+        wx_rel = "今日生你"
+    elif SHENG.get(dm_wx) == today_wx:
+        wx_rel = "你生今日"
+    elif KE.get(today_wx) == dm_wx:
+        wx_rel = "今日克你"
+    elif KE.get(dm_wx) == today_wx:
+        wx_rel = "你克今日"
+    else:
+        wx_rel = "五行比和"
+
+    # 综合判断
+    score = 3  # 0-5分
+    if gan_shishen in ["正印","比肩","正财"]: score += 1
+    if gan_shishen in ["七杀","伤官"]: score -= 1
+    if zhi_clash: score -= 2
+    if zhi_liuhe: score += 1
+    if wx_rel == "今日生你": score += 1
+    if wx_rel == "今日克你": score -= 1
+    score = max(0, min(5, score))
+
+    levels = ["大凶","凶","平","吉","大吉","上上"]
+    level = levels[score]
+
+    tips = {
+        "正印": "宜学习、求教、静养",
+        "偏印": "宜独处思考、研究",
+        "比肩": "宜合作、社交、团队活动",
+        "劫财": "注意财务、谨防破耗",
+        "食神": "宜享受生活、发挥才华",
+        "伤官": "谨言慎行、避免冲突",
+        "正官": "宜守规矩、展现专业",
+        "七杀": "注意压力、避免冒险",
+        "正财": "宜理财、稳扎稳打",
+        "偏财": "宜投资、把握机会",
+    }
+
+    return {
+        "日期": today_date.strftime("%Y-%m-%d"),
+        "今日日柱": f"{today_gan}{today_zhi}",
+        "今日天干": today_gan,
+        "十神关系": gan_shishen,
+        "十神含义": SHISHEN_MEANING.get(gan_shishen, ""),
+        "五行关系": wx_rel,
+        "地支冲合": "六冲！" if zhi_clash else ("六合！" if zhi_liuhe else "无冲合"),
+        "吉凶": level,
+        "评分": score,
+        "建议": tips.get(gan_shishen, "保持平常心"),
+    }
+
+# ============================================================
+# 二十、综合运势计算（整合版 v2.1）
 # ============================================================
 
 def calculate_fortune(date=None, birth_date=None):
@@ -748,9 +1221,55 @@ def calculate_fortune(date=None, birth_date=None):
     # --- 评分 ---
     scores = calculate_scores(day_gan, day_zhi, nayin_wuxing, jianchu, jianchu_info, jishi, chongsha)
 
-    return {
+    # --- 【新增】当前时辰 ---
+    now = datetime.now()
+    current_hour = now.hour
+    # 时辰公式：0,23→子; 1,2→子; 3,4→寅; ... 21,22→亥
+    if current_hour == 0 or current_hour == 23:
+        current_shichen_zhi = '子'
+        current_shichen_idx = 0
+    elif current_hour == 1 or current_hour == 2:
+        current_shichen_zhi = '丑'
+        current_shichen_idx = 1
+    else:
+        current_shichen_idx = current_hour // 2
+        current_shichen_zhi = DI_ZHI[current_shichen_idx]
+    
+    # 当前时辰的黄道黑道信息
+    current_huangdao = None
+    for h in huangdao:
+        if h['时辰'] == current_shichen_zhi:
+            current_huangdao = h
+            break
+    
+    # 当前时辰干支（需要日干来推算）
+    # 甲己日起甲子时，乙庚起丙子时...
+    day_gan_idx = TIAN_GAN.index(day_gan)
+    start_gan_idx = (day_gan_idx * 2) % 10
+    hour_gan_idx = (start_gan_idx + current_shichen_idx) % 10
+    current_shichen_gan = TIAN_GAN[hour_gan_idx]
+    current_shichen_ganzhi = f"{current_shichen_gan}{current_shichen_zhi}"
+    
+    # 时间范围
+    shichen_time_ranges = {
+        '子': '23:00-01:00', '丑': '01:00-03:00', '寅': '03:00-05:00',
+        '卯': '05:00-07:00', '辰': '07:00-09:00', '巳': '09:00-11:00',
+        '午': '11:00-13:00', '未': '13:00-15:00', '申': '15:00-17:00',
+        '酉': '17:00-19:00', '戌': '19:00-21:00', '亥': '21:00-23:00'
+    }
+    
+    result = {
         # 基础字段
         "date": date.strftime("%Y-%m-%d"),
+        "weekday": ["一","二","三","四","五","六","日"][date.weekday()],
+        "time": now.strftime("%H:%M"),
+        "current_shichen": {
+            "name": current_shichen_zhi,
+            "ganzhi": current_shichen_ganzhi,
+            "time_range": shichen_time_ranges[current_shichen_zhi],
+            "huangdao": current_huangdao['值神'] if current_huangdao else None,
+            "jixiong": current_huangdao['吉凶'] if current_huangdao else None,
+        },
         "year_gan_zhi": f"{year_gan}{year_zhi}",
         "month_gan_zhi": f"{month_gan}{month_zhi}",
         "day_gan_zhi": f"{day_gan}{day_zhi}",
@@ -792,7 +1311,28 @@ def calculate_fortune(date=None, birth_date=None):
 
         # 【新增】个人八字（如果提供了出生日期）
         "personal_bazi": calculate_bazi(birth_date) if birth_date else None,
+
+        # 🆕 v2.1 十神/藏干/用神/神煞/大运/流日
+        "shishen": None,
+        "canggan": None,
+        "yongshen": None,
+        "shensha": None,
+        "dayun": None,
+        "liuri": None,
     }
+
+    # 如果有个人八字，计算所有新增模块
+    if result["personal_bazi"]:
+        bz = result["personal_bazi"]
+        pillars = bz.get("四柱详情", [])
+        result["shishen"] = calculate_shishen_all(pillars)
+        result["canggan"] = get_canggan_detail(pillars)
+        result["yongshen"] = analyze_yongshen(bz)
+        result["shensha"] = calculate_shensha(pillars)
+        result["dayun"] = calculate_dayun(birth_date, bz)
+        result["liuri"] = calculate_liuri_jixiong(bz)
+
+    return result
 
 # ============================================================
 # 十五、真实评分算法（保留 v1.0 不变）
